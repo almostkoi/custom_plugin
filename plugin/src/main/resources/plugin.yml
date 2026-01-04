@@ -1,0 +1,6 @@
+name: IttisArmor
+version: 1.0
+main: im.manus.ittisarmor.IttisArmor
+api-version: '1.21'
+description: A plugin for itti's armor set with timed reveals.
+authors: [Manus]

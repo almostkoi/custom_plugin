@@ -58,7 +58,9 @@ public class IttisArmor extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
-        saveData();
+        if (dataConfig != null) {
+            saveData();
+        }
         getLogger().info("IttisArmor disabled!");
     }
 

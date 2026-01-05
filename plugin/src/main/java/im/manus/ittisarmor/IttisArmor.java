@@ -50,7 +50,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private long serverUptimeSeconds = 0;
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
     private final String GUI_TITLE = "itti's Armor Set";
-    private final int CUSTOM_MODEL_DATA = 1001;
+    private final String ITEM_MODEL_NAMESPACE = "minecraft:ittis_";
 
     @Override
     public void onEnable() {
@@ -74,7 +74,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             }
         }.runTaskTimer(this, 20L, 20L);
 
-        getLogger().info("IttisArmor enabled!");
+        getLogger().info("IttisArmor enabled for 1.21.11!");
     }
 
     @Override
@@ -175,7 +175,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
-            meta.setCustomModelData(CUSTOM_MODEL_DATA);
             meta.setUnbreakable(true);
 
             double armor = 0;
@@ -222,16 +221,18 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             item.setItemMeta(meta);
         }
         
-        // Apply components via NBT to ensure both CustomModelData and Equippable are set
-        // This is the most reliable way in 1.21.1 to set multiple components at once
-        String nbt = String.format("{custom_model_data:%d,equippable:{asset_id:\"minecraft:ittis\"}}", CUSTOM_MODEL_DATA);
+        // In 1.21.11, we use 'item_model' and 'equippable' components
+        String modelId = ITEM_MODEL_NAMESPACE + piece.name.toLowerCase();
+        String nbt = String.format("{item_model:\"%s\",equippable:{asset_id:\"minecraft:ittis\"}}", modelId);
         return Bukkit.getUnsafe().modifyItemStack(item, nbt);
     }
 
     private boolean isIttisItem(ItemStack item, Material material) {
         if (item == null || item.getType() != material) return false;
-        ItemMeta meta = item.getItemMeta();
-        return meta != null && meta.hasCustomModelData() && meta.getCustomModelData() == CUSTOM_MODEL_DATA;
+        // In 1.21.11, we check for the item_model component
+        String nbt = new String(Bukkit.getUnsafe().serializeItem(item));
+        String modelId = "ittis_" + material.name().toLowerCase().replace("diamond_", "");
+        return nbt.contains("item_model:\"minecraft:" + modelId + "\"");
     }
 
     private void applyArmorEffects() {

@@ -12,6 +12,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -89,12 +90,15 @@ public class IttisArmor extends JavaPlugin implements Listener {
         for (ArmorPiece piece : armorPieces) {
             String path = "pieces." + piece.name.toLowerCase();
             if (dataConfig.contains(path + ".x")) {
-                piece.location = new Location(
-                        Bukkit.getWorld(UUID.fromString(dataConfig.getString(path + ".world"))),
-                        dataConfig.getInt(path + ".x"),
-                        dataConfig.getInt(path + ".y"),
-                        dataConfig.getInt(path + ".z")
-                );
+                String worldUid = dataConfig.getString(path + ".world");
+                if (worldUid != null) {
+                    piece.location = new Location(
+                            Bukkit.getWorld(UUID.fromString(worldUid)),
+                            dataConfig.getInt(path + ".x"),
+                            dataConfig.getInt(path + ".y"),
+                            dataConfig.getInt(path + ".z")
+                    );
+                }
                 piece.revealed = dataConfig.getBoolean(path + ".revealed", false);
             }
         }
@@ -132,6 +136,40 @@ public class IttisArmor extends JavaPlugin implements Listener {
                 }
             }.runTaskLater(this, 100L); // Wait for world to be ready
         }
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        ArmorPiece nextPiece = null;
+        for (ArmorPiece piece : armorPieces) {
+            if (!piece.revealed) {
+                nextPiece = piece;
+                break;
+            }
+        }
+
+        if (nextPiece != null) {
+            long targetSeconds = (long) nextPiece.revealHour * 3600;
+            long remainingSeconds = targetSeconds - serverUptimeSeconds;
+            if (remainingSeconds < 0) remainingSeconds = 0;
+
+            String timeStr = formatTime(remainingSeconds);
+            Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
+                    .append(Component.text(timeStr + " is left till the next armor piece cords are revealed", NamedTextColor.GOLD));
+            event.getPlayer().sendMessage(message);
+        }
+    }
+
+    private String formatTime(long seconds) {
+        long h = seconds / 3600;
+        long m = (seconds % 3600) / 60;
+        long s = seconds % 60;
+
+        StringBuilder sb = new StringBuilder();
+        if (h > 0) sb.append(h).append(" hours ");
+        if (m > 0 || h > 0) sb.append(m).append(" minutes ");
+        sb.append(s).append(" seconds");
+        return sb.toString().trim();
     }
 
     private void spawnChests(World world) {

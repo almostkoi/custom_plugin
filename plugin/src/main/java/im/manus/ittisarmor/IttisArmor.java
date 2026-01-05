@@ -3,6 +3,7 @@ package im.manus.ittisarmor;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -48,9 +49,13 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private File dataFile;
     private FileConfiguration dataConfig;
     private long serverUptimeSeconds = 0;
+    private long lastTimerReset = 0; // Tracks when the current 5h timer started
+    
+    // Constant: 5 hours in seconds (5 * 60 * 60 = 18000)
+    private final int REVEAL_INTERVAL = 18000; 
+
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
     private final String GUI_TITLE = "itti's Armor Set";
-    private final String ITEM_MODEL_NAMESPACE = "minecraft:ittis_";
 
     @Override
     public void onEnable() {
@@ -60,21 +65,26 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         getCommand("ittisgive").setExecutor(this);
 
         initializeArmorPieces();
-        loadData();
+        loadData(); // Will attempt to load, but is safe if world is null
 
         new BukkitRunnable() {
             @Override
             public void run() {
                 serverUptimeSeconds++;
+                
+                // If the world was null during enable, try to find it now
+                ensureLocationsLoaded();
+                
                 checkReveals();
                 applyArmorEffects();
+                
                 if (serverUptimeSeconds % 60 == 0) {
                     saveData();
                 }
             }
         }.runTaskTimer(this, 20L, 20L);
 
-        getLogger().info("IttisArmor enabled for 1.21.11!");
+        getLogger().info("IttisArmor enabled with fixed timer and world loading!");
     }
 
     @Override
@@ -99,42 +109,68 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     }
 
     private void initializeArmorPieces() {
-        armorPieces.add(new ArmorPiece("Helmet", Material.DIAMOND_HELMET, 5));
-        armorPieces.add(new ArmorPiece("Chestplate", Material.DIAMOND_CHESTPLATE, 10));
-        armorPieces.add(new ArmorPiece("Leggings", Material.DIAMOND_LEGGINGS, 15));
-        armorPieces.add(new ArmorPiece("Boots", Material.DIAMOND_BOOTS, 20));
+        // No hardcoded hours anymore. Just order: 0, 1, 2, 3
+        armorPieces.add(new ArmorPiece("Helmet", Material.DIAMOND_HELMET));
+        armorPieces.add(new ArmorPiece("Chestplate", Material.DIAMOND_CHESTPLATE));
+        armorPieces.add(new ArmorPiece("Leggings", Material.DIAMOND_LEGGINGS));
+        armorPieces.add(new ArmorPiece("Boots", Material.DIAMOND_BOOTS));
     }
 
     private void loadData() {
         serverUptimeSeconds = dataConfig.getLong("uptime", 0);
+        lastTimerReset = dataConfig.getLong("lastTimerReset", 0);
+
         for (ArmorPiece piece : armorPieces) {
             String path = "pieces." + piece.name.toLowerCase();
-            if (dataConfig.contains(path + ".x")) {
+            if (dataConfig.contains(path + ".world")) {
                 String worldUid = dataConfig.getString(path + ".world");
-                if (worldUid != null) {
-                    piece.location = new Location(
-                            Bukkit.getWorld(UUID.fromString(worldUid)),
-                            dataConfig.getInt(path + ".x"),
-                            dataConfig.getInt(path + ".y"),
-                            dataConfig.getInt(path + ".z")
-                    );
-                }
+                
+                // Save raw data so we can construct Location later if World is currently null
+                piece.savedWorldUID = worldUid;
+                piece.savedX = dataConfig.getInt(path + ".x");
+                piece.savedY = dataConfig.getInt(path + ".y");
+                piece.savedZ = dataConfig.getInt(path + ".z");
+
                 piece.revealed = dataConfig.getBoolean(path + ".revealed", false);
+                piece.found = dataConfig.getBoolean(path + ".found", false);
+
+                // Try to load location immediately if possible
+                if (worldUid != null) {
+                    World w = Bukkit.getWorld(UUID.fromString(worldUid));
+                    if (w != null) {
+                        piece.location = new Location(w, piece.savedX, piece.savedY, piece.savedZ);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Helper to fix the "Null World" issue dynamically
+    private void ensureLocationsLoaded() {
+        for (ArmorPiece piece : armorPieces) {
+            if (piece.location == null && piece.savedWorldUID != null) {
+                World w = Bukkit.getWorld(UUID.fromString(piece.savedWorldUID));
+                if (w != null) {
+                    piece.location = new Location(w, piece.savedX, piece.savedY, piece.savedZ);
+                }
             }
         }
     }
 
     private void saveData() {
         dataConfig.set("uptime", serverUptimeSeconds);
+        dataConfig.set("lastTimerReset", lastTimerReset);
+
         for (ArmorPiece piece : armorPieces) {
+            String path = "pieces." + piece.name.toLowerCase();
             if (piece.location != null) {
-                String path = "pieces." + piece.name.toLowerCase();
                 dataConfig.set(path + ".world", piece.location.getWorld().getUID().toString());
                 dataConfig.set(path + ".x", piece.location.getBlockX());
                 dataConfig.set(path + ".y", piece.location.getBlockY());
                 dataConfig.set(path + ".z", piece.location.getBlockZ());
-                dataConfig.set(path + ".revealed", piece.revealed);
             }
+            dataConfig.set(path + ".revealed", piece.revealed);
+            dataConfig.set(path + ".found", piece.found);
         }
         try {
             dataConfig.save(dataFile);
@@ -161,12 +197,10 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     private void openGiveGUI(Player player) {
         Inventory gui = Bukkit.createInventory(null, 9, Component.text(GUI_TITLE));
-        
         int slot = 2;
         for (ArmorPiece piece : armorPieces) {
             gui.setItem(slot++, createArmorItem(piece));
         }
-        
         player.openInventory(gui);
     }
 
@@ -218,12 +252,10 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 }
             }
 
-            // Use CustomModelData so resource packs can override the diamond model reliably
             int modelData = getModelDataForMaterial(piece.material);
             meta.setCustomModelData(modelData);
             item.setItemMeta(meta);
         }
-
         return item;
     }
 
@@ -266,7 +298,25 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
-        if (event.getInventory().getHolder() instanceof Villager villager) {
+        if (event.getInventory().getHolder() instanceof Chest chest) {
+            // Check if this chest corresponds to an unfound armor piece
+            for (ArmorPiece piece : armorPieces) {
+                if (!piece.found && piece.location != null && piece.location.equals(chest.getLocation())) {
+                    // Mark as found
+                    piece.found = true;
+                    // Reset timer for the NEXT piece
+                    lastTimerReset = serverUptimeSeconds; 
+                    
+                    Bukkit.broadcast(Component.text("--------------------------------", NamedTextColor.GOLD));
+                    Bukkit.broadcast(Component.text("The " + piece.name + " has been found!", NamedTextColor.GREEN));
+                    Bukkit.broadcast(Component.text("The next countdown begins now!", NamedTextColor.YELLOW));
+                    Bukkit.broadcast(Component.text("--------------------------------", NamedTextColor.GOLD));
+                    
+                    saveData();
+                    break;
+                }
+            }
+        } else if (event.getInventory().getHolder() instanceof Villager villager) {
             Player player = (Player) event.getPlayer();
             if (isIttisItem(player.getInventory().getHelmet(), Material.DIAMOND_HELMET)) {
                 List<MerchantRecipe> recipes = new ArrayList<>();
@@ -303,10 +353,13 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     @EventHandler
     public void onWorldInit(WorldInitEvent event) {
         World world = event.getWorld();
+        // Only spawn in Overworld
         if (world.getEnvironment() == World.Environment.NORMAL) {
             new BukkitRunnable() {
                 @Override
                 public void run() {
+                    // Just in case world was null before, load data now
+                    loadData();
                     if (armorPieces.get(0).location == null) {
                         spawnChests(world);
                     }
@@ -324,21 +377,29 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
                 ArmorPiece nextPiece = null;
                 for (ArmorPiece piece : armorPieces) {
-                    if (!piece.revealed) {
+                    if (!piece.found) {
                         nextPiece = piece;
                         break;
                     }
                 }
 
                 if (nextPiece != null) {
-                    long targetSeconds = (long) nextPiece.revealHour * 3600;
-                    long remainingSeconds = targetSeconds - serverUptimeSeconds;
+                    // Time calculation: (Last Reset + 5 Hours) - Current Uptime
+                    long timeSinceReset = serverUptimeSeconds - lastTimerReset;
+                    long remainingSeconds = REVEAL_INTERVAL - timeSinceReset;
+                    
                     if (remainingSeconds < 0) remainingSeconds = 0;
-
-                    String timeStr = formatTime(remainingSeconds);
-                    Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
-                            .append(Component.text(timeStr + " is left till the next armor piece cords are revealed", NamedTextColor.GOLD));
-                    event.getPlayer().sendMessage(message);
+                    
+                    if (nextPiece.revealed) {
+                         event.getPlayer().sendMessage(Component.text("IttisArmor: The " + nextPiece.name + " coordinates have been revealed!", NamedTextColor.RED));
+                    } else {
+                        String timeStr = formatTime(remainingSeconds);
+                        Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
+                                .append(Component.text(timeStr + " left until " + nextPiece.name + " reveal.", NamedTextColor.YELLOW));
+                        event.getPlayer().sendMessage(message);
+                    }
+                } else {
+                     event.getPlayer().sendMessage(Component.text("IttisArmor: All pieces have been found!", NamedTextColor.GREEN));
                 }
             }
         }.runTaskLater(this, 40L);
@@ -350,9 +411,9 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         long s = seconds % 60;
 
         StringBuilder sb = new StringBuilder();
-        if (h > 0) sb.append(h).append(" hours ");
-        if (m > 0 || h > 0) sb.append(m).append(" minutes ");
-        sb.append(s).append(" seconds");
+        if (h > 0) sb.append(h).append("h ");
+        if (m > 0 || h > 0) sb.append(m).append("m ");
+        sb.append(s).append("s");
         return sb.toString().trim();
     }
 
@@ -367,6 +428,12 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 int z = spawn.getBlockZ() + random.nextInt(10001) - 5000;
                 int y = random.nextInt(81) - 60;
 
+                // PRE-LOAD CHUNK FIX: Ensure chunk is generated before modifying it
+                Chunk chunk = world.getChunkAt(x >> 4, z >> 4);
+                if (!chunk.isLoaded()) {
+                    chunk.load(true); // true = generate if missing
+                }
+
                 Block block = world.getBlockAt(x, y, z);
                 block.setType(Material.CHEST);
                 if (block.getState() instanceof Chest chest) {
@@ -377,15 +444,27 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             }
         }
         saveData();
-        getLogger().info("Spawned 4 chests for itti's armor set.");
+        getLogger().info("Spawned 4 chests for itti's armor set in the Overworld.");
     }
 
     private void checkReveals() {
-        long uptimeHours = serverUptimeSeconds / 3600;
+        ArmorPiece currentTarget = null;
         for (ArmorPiece piece : armorPieces) {
-            if (!piece.revealed && uptimeHours >= piece.revealHour && piece.location != null) {
-                piece.revealed = true;
-                broadcastReveal(piece);
+            if (!piece.found) {
+                currentTarget = piece;
+                break;
+            }
+        }
+        
+        if (currentTarget == null) return; // All found
+        if (currentTarget.revealed) return; // Already revealed
+
+        long timeSinceReset = serverUptimeSeconds - lastTimerReset;
+        
+        if (timeSinceReset >= REVEAL_INTERVAL) {
+            if (currentTarget.location != null && currentTarget.location.getWorld() != null) {
+                currentTarget.revealed = true;
+                broadcastReveal(currentTarget);
                 saveData();
             }
         }
@@ -393,24 +472,27 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     private void broadcastReveal(ArmorPiece piece) {
         Component message = Component.text("[itti's Armor] ", NamedTextColor.GOLD)
-                .append(Component.text("The " + piece.name + " has been found at X: " + 
-                        piece.location.getBlockX() + ", Y: " + 
-                        piece.location.getBlockY() + ", Z: " + 
-                        piece.location.getBlockZ() + "!", NamedTextColor.GOLD));
+                .append(Component.text("The " + piece.name + " coords: X:" + 
+                        piece.location.getBlockX() + " Y:" + 
+                        piece.location.getBlockY() + " Z:" + 
+                        piece.location.getBlockZ(), NamedTextColor.RED));
         Bukkit.broadcast(message);
     }
 
     private static class ArmorPiece {
         String name;
         Material material;
-        int revealHour;
         Location location;
-        boolean revealed = false;
+        boolean revealed = false; // Coords broadcasted?
+        boolean found = false;    // Player opened chest?
+        
+        // Stored temporarily if World is null during load
+        String savedWorldUID;
+        int savedX, savedY, savedZ;
 
-        ArmorPiece(String name, Material material, int revealHour) {
+        ArmorPiece(String name, Material material) {
             this.name = name;
             this.material = material;
-            this.revealHour = revealHour;
         }
     }
 }

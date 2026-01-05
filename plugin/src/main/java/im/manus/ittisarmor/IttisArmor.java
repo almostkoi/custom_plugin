@@ -218,8 +218,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 }
             }
 
-            item.setItemMeta(meta);
-        }
             // Use CustomModelData so resource packs can override the diamond model reliably
             int modelData = getModelDataForMaterial(piece.material);
             meta.setCustomModelData(modelData);

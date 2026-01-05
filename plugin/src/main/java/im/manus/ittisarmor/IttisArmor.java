@@ -23,6 +23,9 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Merchant;
 import org.bukkit.inventory.MerchantRecipe;
@@ -175,12 +178,30 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
             meta.setCustomModelData(CUSTOM_MODEL_DATA);
             meta.setUnbreakable(true);
-            
-            // In 1.21.1, we use the 'equippable' component to set a custom asset ID.
-            // This allows us to use custom worn textures without overriding standard armor.
-            // The asset ID 'minecraft:ittis' will look for textures/models/armor/ittis_layer_1.png and ittis_layer_2.png
-            // Note: We use NBT/Data Components for this in 1.21.1.
-            
+
+            // Add Netherite Stats (Armor, Toughness, Knockback Resistance)
+            double armor = 0;
+            double toughness = 3.0; // Netherite toughness is 3.0 per piece
+            double knockbackRes = 0.1; // Netherite knockback resistance is 0.1 per piece (1.0 total)
+            EquipmentSlotGroup slot = EquipmentSlotGroup.ANY;
+
+            switch (piece.material) {
+                case DIAMOND_HELMET -> { armor = 3; slot = EquipmentSlotGroup.HEAD; }
+                case DIAMOND_CHESTPLATE -> { armor = 8; slot = EquipmentSlotGroup.CHEST; }
+                case DIAMOND_LEGGINGS -> { armor = 6; slot = EquipmentSlotGroup.LEGS; }
+                case DIAMOND_BOOTS -> { armor = 3; slot = EquipmentSlotGroup.FEET; }
+            }
+
+            meta.addAttributeModifier(Attribute.GENERIC_ARMOR, new AttributeModifier(
+                    new NamespacedKey(this, "armor_" + piece.name.toLowerCase()),
+                    armor, AttributeModifier.Operation.ADD_NUMBER, slot));
+            meta.addAttributeModifier(Attribute.GENERIC_ARMOR_TOUGHNESS, new AttributeModifier(
+                    new NamespacedKey(this, "toughness_" + piece.name.toLowerCase()),
+                    toughness, AttributeModifier.Operation.ADD_NUMBER, slot));
+            meta.addAttributeModifier(Attribute.GENERIC_KNOCKBACK_RESISTANCE, new AttributeModifier(
+                    new NamespacedKey(this, "kb_res_" + piece.name.toLowerCase()),
+                    knockbackRes, AttributeModifier.Operation.ADD_NUMBER, slot));
+
             item.setItemMeta(meta);
             
             // Apply the equippable component via NBT for 1.21.1

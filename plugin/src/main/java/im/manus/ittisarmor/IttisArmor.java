@@ -7,6 +7,8 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.command.Command;
@@ -14,6 +16,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
@@ -22,13 +25,9 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.WorldInitEvent;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeModifier;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.EquipmentSlotGroup;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.Merchant;
 import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -63,7 +62,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         initializeArmorPieces();
         loadData();
 
-        // Start uptime tracker and reveal checker
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -180,10 +178,9 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             meta.setCustomModelData(CUSTOM_MODEL_DATA);
             meta.setUnbreakable(true);
 
-            // Add Netherite Stats (Armor, Toughness, Knockback Resistance)
             double armor = 0;
-            double toughness = 3.0; // Netherite toughness is 3.0 per piece
-            double knockbackRes = 0.1; // Netherite knockback resistance is 0.1 per piece (1.0 total)
+            double toughness = 3.0;
+            double knockbackRes = 0.1;
             EquipmentSlotGroup slot = EquipmentSlotGroup.ANY;
 
             switch (piece.material) {
@@ -203,7 +200,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                     new NamespacedKey(this, "kb_res_" + piece.name.toLowerCase()),
                     knockbackRes, AttributeModifier.Operation.ADD_NUMBER, slot));
 
-            // Add Enchantments
             meta.addEnchant(Enchantment.PROTECTION, 4, true);
             meta.addEnchant(Enchantment.UNBREAKING, 3, true);
             meta.addEnchant(Enchantment.MENDING, 1, true);
@@ -224,11 +220,12 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             }
 
             item.setItemMeta(meta);
-            
-            // Apply the equippable component via NBT for 1.21.1
-            Bukkit.getUnsafe().modifyItemStack(item, "{equippable:{asset_id:\"minecraft:ittis\"}}");
         }
-        return item;
+        
+        // Apply components via NBT to ensure both CustomModelData and Equippable are set
+        // This is the most reliable way in 1.21.1 to set multiple components at once
+        String nbt = String.format("{custom_model_data:%d,equippable:{asset_id:\"minecraft:ittis\"}}", CUSTOM_MODEL_DATA);
+        return Bukkit.getUnsafe().modifyItemStack(item, nbt);
     }
 
     private boolean isIttisItem(ItemStack item, Material material) {

@@ -5,6 +5,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
@@ -14,15 +15,21 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.Merchant;
+import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 
@@ -40,6 +47,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private long serverUptimeSeconds = 0;
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
     private final String GUI_TITLE = "itti's Armor Set";
+    private final int CUSTOM_MODEL_DATA = 1001;
 
     @Override
     public void onEnable() {
@@ -57,6 +65,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             public void run() {
                 serverUptimeSeconds++;
                 checkReveals();
+                applyArmorEffects();
                 if (serverUptimeSeconds % 60 == 0) {
                     saveData();
                 }
@@ -162,18 +171,78 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private ItemStack createArmorItem(ArmorPiece piece) {
         ItemStack item = new ItemStack(piece.material);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
-        meta.setCustomModelData(1001);
-        item.setItemMeta(meta);
+        if (meta != null) {
+            meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
+            meta.setCustomModelData(CUSTOM_MODEL_DATA);
+            meta.setUnbreakable(true);
+            
+            // In 1.21.1, we use the 'equippable' component to set a custom asset ID.
+            // This allows us to use custom worn textures without overriding standard armor.
+            // The asset ID 'minecraft:ittis' will look for textures/models/armor/ittis_layer_1.png and ittis_layer_2.png
+            // Note: We use NBT/Data Components for this in 1.21.1.
+            
+            item.setItemMeta(meta);
+            
+            // Apply the equippable component via NBT for 1.21.1
+            Bukkit.getUnsafe().modifyItemStack(item, "{equippable:{asset_id:\"minecraft:ittis\"}}");
+        }
         return item;
+    }
+
+    private boolean isIttisItem(ItemStack item, Material material) {
+        if (item == null || item.getType() != material) return false;
+        ItemMeta meta = item.getItemMeta();
+        return meta != null && meta.hasCustomModelData() && meta.getCustomModelData() == CUSTOM_MODEL_DATA;
+    }
+
+    private void applyArmorEffects() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            ItemStack chest = player.getInventory().getChestplate();
+            ItemStack legs = player.getInventory().getLeggings();
+            ItemStack boots = player.getInventory().getBoots();
+
+            if (isIttisItem(chest, Material.DIAMOND_CHESTPLATE)) {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 1, false, false, true));
+            }
+            if (isIttisItem(legs, Material.DIAMOND_LEGGINGS)) {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 40, 1, false, false, true));
+            }
+            if (isIttisItem(boots, Material.DIAMOND_BOOTS)) {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 40, 2, false, false, true));
+            }
+        }
+    }
+
+    @EventHandler
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (event.getInventory().getHolder() instanceof Villager villager) {
+            Player player = (Player) event.getPlayer();
+            if (isIttisItem(player.getInventory().getHelmet(), Material.DIAMOND_HELMET)) {
+                List<MerchantRecipe> recipes = new ArrayList<>();
+                for (MerchantRecipe recipe : villager.getRecipes()) {
+                    MerchantRecipe newRecipe = new MerchantRecipe(recipe.getResult(), recipe.getMaxUses());
+                    newRecipe.setExperienceReward(recipe.hasExperienceReward());
+                    newRecipe.setVillagerExperience(recipe.getVillagerExperience());
+                    newRecipe.setPriceMultiplier(recipe.getPriceMultiplier());
+                    newRecipe.setDemand(recipe.getDemand());
+                    newRecipe.setSpecialPrice(recipe.getSpecialPrice());
+
+                    for (ItemStack ingredient : recipe.getIngredients()) {
+                        ItemStack newIngredient = ingredient.clone();
+                        newIngredient.setAmount(1);
+                        newRecipe.addIngredient(newIngredient);
+                    }
+                    recipes.add(newRecipe);
+                }
+                villager.setRecipes(recipes);
+            }
+        }
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (event.getView().title().equals(Component.text(GUI_TITLE))) {
             if (event.getCurrentItem() != null && event.getCurrentItem().getType() != Material.AIR) {
-                // Allow taking the item, but don't cancel so they can actually take it
-                // Or cancel and give a copy to keep the GUI full
                 event.setCancelled(true);
                 event.getWhoClicked().getInventory().addItem(event.getCurrentItem().clone());
             }
@@ -191,7 +260,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                         spawnChests(world);
                     }
                 }
-            }.runTaskLater(this, 100L); // Wait for world to be ready
+            }.runTaskLater(this, 100L);
         }
     }
 
@@ -221,7 +290,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                     event.getPlayer().sendMessage(message);
                 }
             }
-        }.runTaskLater(this, 40L); // 2 second delay
+        }.runTaskLater(this, 40L);
     }
 
     private String formatTime(long seconds) {
@@ -245,7 +314,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             while (!placed) {
                 int x = spawn.getBlockX() + random.nextInt(10001) - 5000;
                 int z = spawn.getBlockZ() + random.nextInt(10001) - 5000;
-                int y = random.nextInt(81) - 60; // -60 to 20
+                int y = random.nextInt(81) - 60;
 
                 Block block = world.getBlockAt(x, y, z);
                 block.setType(Material.CHEST);

@@ -1,0 +1,14 @@
+{
+  "layers": {
+    "humanoid": [
+      {
+        "texture": "minecraft:ittis"
+      }
+    ],
+    "humanoid_leggings": [
+      {
+        "texture": "minecraft:ittis"
+      }
+    ]
+  }
+}

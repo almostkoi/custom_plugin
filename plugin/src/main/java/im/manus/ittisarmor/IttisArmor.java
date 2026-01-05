@@ -25,6 +25,7 @@ import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Merchant;
@@ -201,6 +202,26 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             meta.addAttributeModifier(Attribute.GENERIC_KNOCKBACK_RESISTANCE, new AttributeModifier(
                     new NamespacedKey(this, "kb_res_" + piece.name.toLowerCase()),
                     knockbackRes, AttributeModifier.Operation.ADD_NUMBER, slot));
+
+            // Add Enchantments
+            meta.addEnchant(Enchantment.PROTECTION, 4, true);
+            meta.addEnchant(Enchantment.UNBREAKING, 3, true);
+            meta.addEnchant(Enchantment.MENDING, 1, true);
+
+            switch (piece.material) {
+                case DIAMOND_HELMET -> {
+                    meta.addEnchant(Enchantment.RESPIRATION, 3, true);
+                    meta.addEnchant(Enchantment.AQUA_AFFINITY, 1, true);
+                }
+                case DIAMOND_LEGGINGS -> {
+                    meta.addEnchant(Enchantment.SWIFT_SNEAK, 3, true);
+                }
+                case DIAMOND_BOOTS -> {
+                    meta.addEnchant(Enchantment.FEATHER_FALLING, 4, true);
+                    meta.addEnchant(Enchantment.DEPTH_STRIDER, 3, true);
+                    meta.addEnchant(Enchantment.SOUL_SPEED, 3, true);
+                }
+            }
 
             item.setItemMeta(meta);
             

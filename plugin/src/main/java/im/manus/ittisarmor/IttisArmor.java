@@ -140,24 +140,31 @@ public class IttisArmor extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        ArmorPiece nextPiece = null;
-        for (ArmorPiece piece : armorPieces) {
-            if (!piece.revealed) {
-                nextPiece = piece;
-                break;
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!event.getPlayer().isOnline()) return;
+
+                ArmorPiece nextPiece = null;
+                for (ArmorPiece piece : armorPieces) {
+                    if (!piece.revealed) {
+                        nextPiece = piece;
+                        break;
+                    }
+                }
+
+                if (nextPiece != null) {
+                    long targetSeconds = (long) nextPiece.revealHour * 3600;
+                    long remainingSeconds = targetSeconds - serverUptimeSeconds;
+                    if (remainingSeconds < 0) remainingSeconds = 0;
+
+                    String timeStr = formatTime(remainingSeconds);
+                    Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
+                            .append(Component.text(timeStr + " is left till the next armor piece cords are revealed", NamedTextColor.GOLD));
+                    event.getPlayer().sendMessage(message);
+                }
             }
-        }
-
-        if (nextPiece != null) {
-            long targetSeconds = (long) nextPiece.revealHour * 3600;
-            long remainingSeconds = targetSeconds - serverUptimeSeconds;
-            if (remainingSeconds < 0) remainingSeconds = 0;
-
-            String timeStr = formatTime(remainingSeconds);
-            Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
-                    .append(Component.text(timeStr + " is left till the next armor piece cords are revealed", NamedTextColor.GOLD));
-            event.getPlayer().sendMessage(message);
-        }
+        }.runTaskLater(this, 40L); // 2 second delay (20 ticks = 1 second)
     }
 
     private String formatTime(long seconds) {

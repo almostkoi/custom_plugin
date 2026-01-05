@@ -8,16 +8,23 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.WorldInitEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,18 +33,20 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 
-public class IttisArmor extends JavaPlugin implements Listener {
+public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor {
 
     private File dataFile;
     private FileConfiguration dataConfig;
     private long serverUptimeSeconds = 0;
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
+    private final String GUI_TITLE = "itti's Armor Set";
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         createDataFile();
         getServer().getPluginManager().registerEvents(this, this);
+        getCommand("ittisgive").setExecutor(this);
 
         initializeArmorPieces();
         loadData();
@@ -123,6 +132,54 @@ public class IttisArmor extends JavaPlugin implements Listener {
         }
     }
 
+    @Override
+    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("Only players can use this command.");
+            return true;
+        }
+
+        if (!player.isOp()) {
+            player.sendMessage(Component.text("You do not have permission to use this command.", NamedTextColor.RED));
+            return true;
+        }
+
+        openGiveGUI(player);
+        return true;
+    }
+
+    private void openGiveGUI(Player player) {
+        Inventory gui = Bukkit.createInventory(null, 9, Component.text(GUI_TITLE));
+        
+        int slot = 2;
+        for (ArmorPiece piece : armorPieces) {
+            gui.setItem(slot++, createArmorItem(piece));
+        }
+        
+        player.openInventory(gui);
+    }
+
+    private ItemStack createArmorItem(ArmorPiece piece) {
+        ItemStack item = new ItemStack(piece.material);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
+        meta.setCustomModelData(1001);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (event.getView().title().equals(Component.text(GUI_TITLE))) {
+            if (event.getCurrentItem() != null && event.getCurrentItem().getType() != Material.AIR) {
+                // Allow taking the item, but don't cancel so they can actually take it
+                // Or cancel and give a copy to keep the GUI full
+                event.setCancelled(true);
+                event.getWhoClicked().getInventory().addItem(event.getCurrentItem().clone());
+            }
+        }
+    }
+
     @EventHandler
     public void onWorldInit(WorldInitEvent event) {
         World world = event.getWorld();
@@ -164,7 +221,7 @@ public class IttisArmor extends JavaPlugin implements Listener {
                     event.getPlayer().sendMessage(message);
                 }
             }
-        }.runTaskLater(this, 40L); // 2 second delay (20 ticks = 1 second)
+        }.runTaskLater(this, 40L); // 2 second delay
     }
 
     private String formatTime(long seconds) {
@@ -193,13 +250,7 @@ public class IttisArmor extends JavaPlugin implements Listener {
                 Block block = world.getBlockAt(x, y, z);
                 block.setType(Material.CHEST);
                 if (block.getState() instanceof Chest chest) {
-                    ItemStack item = new ItemStack(piece.material);
-                    ItemMeta meta = item.getItemMeta();
-                    meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
-                    meta.setCustomModelData(1001);
-                    item.setItemMeta(meta);
-                    
-                    chest.getInventory().addItem(item);
+                    chest.getInventory().addItem(createArmorItem(piece));
                     piece.location = block.getLocation();
                     placed = true;
                 }

@@ -4,3 +4,8 @@ main: im.manus.ittisarmor.IttisArmor
 api-version: '1.21'
 description: A plugin for itti's armor set with timed reveals.
 authors: [Manus]
+commands:
+  ittisgive:
+    description: Open a GUI to take itti's armor pieces.
+    permission: ittisarmor.admin
+    usage: /<command>

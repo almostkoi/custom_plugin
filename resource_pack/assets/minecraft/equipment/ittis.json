@@ -2,12 +2,12 @@
   "layers": {
     "humanoid": [
       {
-        "texture": "minecraft:ittis"
+        "texture": "minecraft:models/armor/ittis"
       }
     ],
     "humanoid_leggings": [
       {
-        "texture": "minecraft:ittis"
+        "texture": "minecraft:models/armor/ittis"
       }
     ]
   }

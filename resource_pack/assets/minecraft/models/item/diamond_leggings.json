@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "item/diamond_leggings"
+  },
+  "overrides": [
+    {
+      "predicate": { "custom_model_data": 1003 },
+      "model": "item/ittis_leggings"
+    }
+  ]
+}

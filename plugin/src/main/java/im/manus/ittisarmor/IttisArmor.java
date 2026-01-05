@@ -220,19 +220,32 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
             item.setItemMeta(meta);
         }
-        
-        // In 1.21.11, we use 'item_model' and 'equippable' components
-        String modelId = ITEM_MODEL_NAMESPACE + piece.name.toLowerCase();
-        String nbt = String.format("{item_model:\"%s\",equippable:{asset_id:\"minecraft:ittis\"}}", modelId);
-        return Bukkit.getUnsafe().modifyItemStack(item, nbt);
+            // Use CustomModelData so resource packs can override the diamond model reliably
+            int modelData = getModelDataForMaterial(piece.material);
+            meta.setCustomModelData(modelData);
+            item.setItemMeta(meta);
+        }
+
+        return item;
     }
 
     private boolean isIttisItem(ItemStack item, Material material) {
         if (item == null || item.getType() != material) return false;
-        // In 1.21.11, we check for the item_model component
-        String nbt = new String(Bukkit.getUnsafe().serializeItem(item));
-        String modelId = "ittis_" + material.name().toLowerCase().replace("diamond_", "");
-        return nbt.contains("item_model:\"minecraft:" + modelId + "\"");
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return false;
+        Integer cmd = meta.getCustomModelData();
+        if (cmd == null) return false;
+        return cmd == getModelDataForMaterial(material);
+    }
+
+    private int getModelDataForMaterial(Material material) {
+        return switch (material) {
+            case DIAMOND_HELMET -> 1001;
+            case DIAMOND_CHESTPLATE -> 1002;
+            case DIAMOND_LEGGINGS -> 1003;
+            case DIAMOND_BOOTS -> 1004;
+            default -> 0;
+        };
     }
 
     private void applyArmorEffects() {

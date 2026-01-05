@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "item/diamond_helmet"
+  },
+  "overrides": [
+    {
+      "predicate": { "custom_model_data": 1001 },
+      "model": "item/ittis_helmet"
+    }
+  ]
+}

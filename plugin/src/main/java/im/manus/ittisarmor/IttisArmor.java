@@ -30,11 +30,11 @@ import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MerchantRecipe;
-import org.bukkit.inventory.meta.ArmorMeta;
+import org.bukkit.inventory.meta.ArmorMeta; // NEW IMPORT
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.trim.ArmorTrim;
-import org.bukkit.inventory.meta.trim.TrimMaterial;
-import org.bukkit.inventory.meta.trim.TrimPattern;
+import org.bukkit.inventory.meta.trim.ArmorTrim; // NEW IMPORT
+import org.bukkit.inventory.meta.trim.TrimMaterial; // NEW IMPORT
+import org.bukkit.inventory.meta.trim.TrimPattern; // NEW IMPORT
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -55,8 +55,8 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private long serverUptimeSeconds = 0;
     private long lastTimerReset = 0; 
     
-    // Constant: 10 minutes in seconds (10 * 60 = 600)
-    private final int REVEAL_INTERVAL = 600; 
+    // Constant: 5 hours in seconds (18000)
+    private final int REVEAL_INTERVAL = 18000; 
 
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
     private final String GUI_TITLE = "itti's Armor Set";
@@ -85,7 +85,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             }
         }.runTaskTimer(this, 20L, 20L);
 
-        getLogger().info("IttisArmor enabled with 10-minute timer!");
+        getLogger().info("IttisArmor enabled with Trims!");
     }
 
     @Override
@@ -201,15 +201,18 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         player.openInventory(gui);
     }
 
+    // --- UPDATED METHOD FOR TRIMS ---
     private ItemStack createArmorItem(ArmorPiece piece) {
         ItemStack item = new ItemStack(piece.material);
         
+        // We cast to ArmorMeta to access trim methods
         if (item.getItemMeta() instanceof ArmorMeta meta) {
             meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
             meta.setUnbreakable(true);
 
-            // Set Trim: Eye Pattern with Netherite Material
+            // --- ADDING THE TRIM HERE ---
             meta.setTrim(new ArmorTrim(TrimMaterial.NETHERITE, TrimPattern.EYE));
+            // ----------------------------
 
             double armor = 0;
             double toughness = 3.0;

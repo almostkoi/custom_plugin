@@ -30,7 +30,11 @@ import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MerchantRecipe;
+import org.bukkit.inventory.meta.ArmorMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.trim.ArmorTrim;
+import org.bukkit.inventory.meta.trim.TrimMaterial;
+import org.bukkit.inventory.meta.trim.TrimPattern;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -49,10 +53,10 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private File dataFile;
     private FileConfiguration dataConfig;
     private long serverUptimeSeconds = 0;
-    private long lastTimerReset = 0; // Tracks when the current 5h timer started
+    private long lastTimerReset = 0; 
     
-    // Constant: 5 hours in seconds (5 * 60 * 60 = 18000)
-    private final int REVEAL_INTERVAL = 18000; 
+    // Constant: 10 minutes in seconds (10 * 60 = 600)
+    private final int REVEAL_INTERVAL = 600; 
 
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
     private final String GUI_TITLE = "itti's Armor Set";
@@ -65,16 +69,13 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         getCommand("ittisgive").setExecutor(this);
 
         initializeArmorPieces();
-        loadData(); // Will attempt to load, but is safe if world is null
+        loadData(); 
 
         new BukkitRunnable() {
             @Override
             public void run() {
                 serverUptimeSeconds++;
-                
-                // If the world was null during enable, try to find it now
                 ensureLocationsLoaded();
-                
                 checkReveals();
                 applyArmorEffects();
                 
@@ -84,7 +85,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             }
         }.runTaskTimer(this, 20L, 20L);
 
-        getLogger().info("IttisArmor enabled with fixed timer and world loading!");
+        getLogger().info("IttisArmor enabled with 10-minute timer!");
     }
 
     @Override
@@ -109,7 +110,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     }
 
     private void initializeArmorPieces() {
-        // No hardcoded hours anymore. Just order: 0, 1, 2, 3
         armorPieces.add(new ArmorPiece("Helmet", Material.DIAMOND_HELMET));
         armorPieces.add(new ArmorPiece("Chestplate", Material.DIAMOND_CHESTPLATE));
         armorPieces.add(new ArmorPiece("Leggings", Material.DIAMOND_LEGGINGS));
@@ -125,7 +125,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             if (dataConfig.contains(path + ".world")) {
                 String worldUid = dataConfig.getString(path + ".world");
                 
-                // Save raw data so we can construct Location later if World is currently null
                 piece.savedWorldUID = worldUid;
                 piece.savedX = dataConfig.getInt(path + ".x");
                 piece.savedY = dataConfig.getInt(path + ".y");
@@ -134,7 +133,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 piece.revealed = dataConfig.getBoolean(path + ".revealed", false);
                 piece.found = dataConfig.getBoolean(path + ".found", false);
 
-                // Try to load location immediately if possible
                 if (worldUid != null) {
                     World w = Bukkit.getWorld(UUID.fromString(worldUid));
                     if (w != null) {
@@ -145,7 +143,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         }
     }
     
-    // Helper to fix the "Null World" issue dynamically
     private void ensureLocationsLoaded() {
         for (ArmorPiece piece : armorPieces) {
             if (piece.location == null && piece.savedWorldUID != null) {
@@ -206,10 +203,13 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     private ItemStack createArmorItem(ArmorPiece piece) {
         ItemStack item = new ItemStack(piece.material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
+        
+        if (item.getItemMeta() instanceof ArmorMeta meta) {
             meta.displayName(Component.text("itti's " + piece.name).color(NamedTextColor.GOLD));
             meta.setUnbreakable(true);
+
+            // Set Trim: Eye Pattern with Netherite Material
+            meta.setTrim(new ArmorTrim(TrimMaterial.NETHERITE, TrimPattern.EYE));
 
             double armor = 0;
             double toughness = 3.0;
@@ -254,6 +254,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
             int modelData = getModelDataForMaterial(piece.material);
             meta.setCustomModelData(modelData);
+            
             item.setItemMeta(meta);
         }
         return item;
@@ -299,12 +300,9 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
         if (event.getInventory().getHolder() instanceof Chest chest) {
-            // Check if this chest corresponds to an unfound armor piece
             for (ArmorPiece piece : armorPieces) {
                 if (!piece.found && piece.location != null && piece.location.equals(chest.getLocation())) {
-                    // Mark as found
                     piece.found = true;
-                    // Reset timer for the NEXT piece
                     lastTimerReset = serverUptimeSeconds; 
                     
                     Bukkit.broadcast(Component.text("--------------------------------", NamedTextColor.GOLD));
@@ -353,12 +351,10 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     @EventHandler
     public void onWorldInit(WorldInitEvent event) {
         World world = event.getWorld();
-        // Only spawn in Overworld
         if (world.getEnvironment() == World.Environment.NORMAL) {
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    // Just in case world was null before, load data now
                     loadData();
                     if (armorPieces.get(0).location == null) {
                         spawnChests(world);
@@ -384,7 +380,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 }
 
                 if (nextPiece != null) {
-                    // Time calculation: (Last Reset + 5 Hours) - Current Uptime
                     long timeSinceReset = serverUptimeSeconds - lastTimerReset;
                     long remainingSeconds = REVEAL_INTERVAL - timeSinceReset;
                     
@@ -428,10 +423,9 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 int z = spawn.getBlockZ() + random.nextInt(10001) - 5000;
                 int y = random.nextInt(81) - 60;
 
-                // PRE-LOAD CHUNK FIX: Ensure chunk is generated before modifying it
                 Chunk chunk = world.getChunkAt(x >> 4, z >> 4);
                 if (!chunk.isLoaded()) {
-                    chunk.load(true); // true = generate if missing
+                    chunk.load(true); 
                 }
 
                 Block block = world.getBlockAt(x, y, z);
@@ -456,8 +450,8 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             }
         }
         
-        if (currentTarget == null) return; // All found
-        if (currentTarget.revealed) return; // Already revealed
+        if (currentTarget == null) return; 
+        if (currentTarget.revealed) return; 
 
         long timeSinceReset = serverUptimeSeconds - lastTimerReset;
         
@@ -483,10 +477,9 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         String name;
         Material material;
         Location location;
-        boolean revealed = false; // Coords broadcasted?
-        boolean found = false;    // Player opened chest?
+        boolean revealed = false; 
+        boolean found = false;    
         
-        // Stored temporarily if World is null during load
         String savedWorldUID;
         int savedX, savedY, savedZ;
 

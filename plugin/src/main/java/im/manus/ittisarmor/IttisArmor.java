@@ -62,7 +62,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private long lastTimerReset = 0;
 
     // Constant: 5 hours in seconds (18000)
-    private final int REVEAL_INTERVAL = 18000;
+    private final int REVEAL_INTERVAL = 600;
 
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
     private final String GUI_TITLE = "itti's Armor Set";

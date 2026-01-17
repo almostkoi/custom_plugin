@@ -20,7 +20,6 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.ClickType;
@@ -33,7 +32,6 @@ import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.inventory.meta.ArmorMeta;
 import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.BundleMeta;
@@ -62,7 +60,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
     private long lastTimerReset = 0;
 
     // Constant: 5 hours in seconds (18000)
-    private final int REVEAL_INTERVAL = 600;
+    private final int REVEAL_INTERVAL = 18000;
 
     private final List<ArmorPiece> armorPieces = new ArrayList<>();
     private final String GUI_TITLE = "itti's Armor Set";
@@ -80,7 +78,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         new BukkitRunnable() {
             @Override
             public void run() {
-                // Only tick if players are online
+                // TIMER LOGIC: Only tick if at least 1 player is online
                 if (!Bukkit.getOnlinePlayers().isEmpty()) {
                     serverUptimeSeconds++;
                     
@@ -326,9 +324,16 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     private void applyArmorEffects() {
         for (Player player : Bukkit.getOnlinePlayers()) {
+            ItemStack helmet = player.getInventory().getHelmet();
             ItemStack chest = player.getInventory().getChestplate();
             ItemStack legs = player.getInventory().getLeggings();
             ItemStack boots = player.getInventory().getBoots();
+
+            // HELMET: Hero of the Village (Level 255)
+            if (isIttisItem(helmet, Material.DIAMOND_HELMET)) {
+                // Amplifier 255 usually reduces trades to 1 item
+                player.addPotionEffect(new PotionEffect(PotionEffectType.HERO_OF_THE_VILLAGE, 40, 255, false, false, true));
+            }
 
             if (isIttisItem(chest, Material.DIAMOND_CHESTPLATE)) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 1, false, false, true));
@@ -344,6 +349,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
+        // FOUND CHECK (Logic for finding chest in the world)
         if (event.getInventory().getHolder() instanceof Chest chest) {
             for (ArmorPiece piece : armorPieces) {
                 if (!piece.found && piece.location != null && piece.location.equals(chest.getLocation())) {
@@ -359,28 +365,10 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                     break;
                 }
             }
-        } else if (event.getInventory().getHolder() instanceof Villager villager) {
-            Player player = (Player) event.getPlayer();
-            if (isIttisItem(player.getInventory().getHelmet(), Material.DIAMOND_HELMET)) {
-                List<MerchantRecipe> recipes = new ArrayList<>();
-                for (MerchantRecipe recipe : villager.getRecipes()) {
-                    MerchantRecipe newRecipe = new MerchantRecipe(recipe.getResult(), recipe.getMaxUses());
-                    newRecipe.setExperienceReward(recipe.hasExperienceReward());
-                    newRecipe.setVillagerExperience(recipe.getVillagerExperience());
-                    newRecipe.setPriceMultiplier(recipe.getPriceMultiplier());
-                    newRecipe.setDemand(recipe.getDemand());
-                    newRecipe.setSpecialPrice(recipe.getSpecialPrice());
-
-                    for (ItemStack ingredient : recipe.getIngredients()) {
-                        ItemStack newIngredient = ingredient.clone();
-                        newIngredient.setAmount(1);
-                        newRecipe.addIngredient(newIngredient);
-                    }
-                    recipes.add(newRecipe);
-                }
-                villager.setRecipes(recipes);
-            }
-        }
+        } 
+        
+        // Removed old Villager recipe manual override logic. 
+        // The Hero of the Village effect in applyArmorEffects now handles discounts.
     }
 
     @EventHandler

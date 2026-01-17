@@ -276,9 +276,11 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         if (item == null || item.getType() != material) return false;
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
-        Integer cmd = meta.getCustomModelData();
-        if (cmd == null) return false;
-        return cmd == getModelDataForMaterial(material);
+
+        // FIXED: Check if it actually HAS custom model data before trying to get it
+        if (!meta.hasCustomModelData()) return false;
+        
+        return meta.getCustomModelData() == getModelDataForMaterial(material);
     }
     
     // Checks if the item IS an armor piece, OR if it is a container holding one
@@ -366,9 +368,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 }
             }
         } 
-        
-        // Removed old Villager recipe manual override logic. 
-        // The Hero of the Village effect in applyArmorEffects now handles discounts.
     }
 
     @EventHandler

@@ -12,6 +12,7 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
+import org.bukkit.block.ShulkerBox;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -19,18 +20,21 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.inventory.meta.ArmorMeta;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.BundleMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.trim.ArmorTrim;
 import org.bukkit.inventory.meta.trim.TrimMaterial;
@@ -74,16 +78,19 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         new BukkitRunnable() {
             @Override
             public void run() {
-                serverUptimeSeconds++;
-                
-                // Attempt to fix broken locations every tick if needed
-                ensureLocationsLoaded();
-                
-                checkReveals();
-                applyArmorEffects();
+                // TIMER LOGIC: Only tick if at least 1 player is online
+                if (!Bukkit.getOnlinePlayers().isEmpty()) {
+                    serverUptimeSeconds++;
+                    
+                    // Attempt to fix broken locations every tick if needed
+                    ensureLocationsLoaded();
+                    
+                    checkReveals();
+                    applyArmorEffects();
 
-                if (serverUptimeSeconds % 60 == 0) {
-                    saveData();
+                    if (serverUptimeSeconds % 60 == 0) {
+                        saveData();
+                    }
                 }
             }
         }.runTaskTimer(this, 20L, 20L);
@@ -127,7 +134,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             String path = "pieces." + piece.name.toLowerCase();
             if (dataConfig.contains(path + ".world")) {
                 piece.savedWorldUID = dataConfig.getString(path + ".world");
-                piece.savedWorldName = dataConfig.getString(path + ".worldName"); // Backup Name
+                piece.savedWorldName = dataConfig.getString(path + ".worldName");
                 piece.savedX = dataConfig.getInt(path + ".x");
                 piece.savedY = dataConfig.getInt(path + ".y");
                 piece.savedZ = dataConfig.getInt(path + ".z");
@@ -135,7 +142,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 piece.revealed = dataConfig.getBoolean(path + ".revealed", false);
                 piece.found = dataConfig.getBoolean(path + ".found", false);
                 
-                // Try initial load
                 restoreLocation(piece);
             }
         }
@@ -143,9 +149,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     private void restoreLocation(ArmorPiece piece) {
         if (piece.savedWorldUID != null) {
-            // Try by UUID first
             World w = Bukkit.getWorld(UUID.fromString(piece.savedWorldUID));
-            // If UUID fails, try by Name
             if (w == null && piece.savedWorldName != null) {
                 w = Bukkit.getWorld(piece.savedWorldName);
             }
@@ -172,7 +176,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             String path = "pieces." + piece.name.toLowerCase();
             if (piece.location != null) {
                 dataConfig.set(path + ".world", piece.location.getWorld().getUID().toString());
-                dataConfig.set(path + ".worldName", piece.location.getWorld().getName()); // Save Name too
+                dataConfig.set(path + ".worldName", piece.location.getWorld().getName());
                 dataConfig.set(path + ".x", piece.location.getBlockX());
                 dataConfig.set(path + ".y", piece.location.getBlockY());
                 dataConfig.set(path + ".z", piece.location.getBlockZ());
@@ -272,9 +276,42 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         if (item == null || item.getType() != material) return false;
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
-        Integer cmd = meta.getCustomModelData();
-        if (cmd == null) return false;
-        return cmd == getModelDataForMaterial(material);
+
+        // FIXED: Check if it actually HAS custom model data before trying to get it
+        if (!meta.hasCustomModelData()) return false;
+        
+        return meta.getCustomModelData() == getModelDataForMaterial(material);
+    }
+    
+    // Checks if the item IS an armor piece, OR if it is a container holding one
+    private boolean isRestrictedItem(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return false;
+
+        // 1. Direct check
+        if (isIttisItem(item, Material.DIAMOND_HELMET) ||
+            isIttisItem(item, Material.DIAMOND_CHESTPLATE) ||
+            isIttisItem(item, Material.DIAMOND_LEGGINGS) ||
+            isIttisItem(item, Material.DIAMOND_BOOTS)) {
+            return true;
+        }
+
+        // 2. Bundle check (Recursive)
+        if (item.getItemMeta() instanceof BundleMeta bundleMeta) {
+            for (ItemStack content : bundleMeta.getItems()) {
+                if (isRestrictedItem(content)) return true;
+            }
+        }
+
+        // 3. Shulker Box check
+        if (item.getItemMeta() instanceof BlockStateMeta blockStateMeta) {
+            if (blockStateMeta.getBlockState() instanceof ShulkerBox shulkerBox) {
+                for (ItemStack content : shulkerBox.getInventory().getContents()) {
+                    if (isRestrictedItem(content)) return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private int getModelDataForMaterial(Material material) {
@@ -289,9 +326,16 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     private void applyArmorEffects() {
         for (Player player : Bukkit.getOnlinePlayers()) {
+            ItemStack helmet = player.getInventory().getHelmet();
             ItemStack chest = player.getInventory().getChestplate();
             ItemStack legs = player.getInventory().getLeggings();
             ItemStack boots = player.getInventory().getBoots();
+
+            // HELMET: Hero of the Village (Level 255)
+            if (isIttisItem(helmet, Material.DIAMOND_HELMET)) {
+                // Amplifier 255 usually reduces trades to 1 item
+                player.addPotionEffect(new PotionEffect(PotionEffectType.HERO_OF_THE_VILLAGE, 40, 255, false, false, true));
+            }
 
             if (isIttisItem(chest, Material.DIAMOND_CHESTPLATE)) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 1, false, false, true));
@@ -307,6 +351,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
 
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
+        // FOUND CHECK (Logic for finding chest in the world)
         if (event.getInventory().getHolder() instanceof Chest chest) {
             for (ArmorPiece piece : armorPieces) {
                 if (!piece.found && piece.location != null && piece.location.equals(chest.getLocation())) {
@@ -322,36 +367,60 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                     break;
                 }
             }
-        } else if (event.getInventory().getHolder() instanceof Villager villager) {
-            Player player = (Player) event.getPlayer();
-            if (isIttisItem(player.getInventory().getHelmet(), Material.DIAMOND_HELMET)) {
-                List<MerchantRecipe> recipes = new ArrayList<>();
-                for (MerchantRecipe recipe : villager.getRecipes()) {
-                    MerchantRecipe newRecipe = new MerchantRecipe(recipe.getResult(), recipe.getMaxUses());
-                    newRecipe.setExperienceReward(recipe.hasExperienceReward());
-                    newRecipe.setVillagerExperience(recipe.getVillagerExperience());
-                    newRecipe.setPriceMultiplier(recipe.getPriceMultiplier());
-                    newRecipe.setDemand(recipe.getDemand());
-                    newRecipe.setSpecialPrice(recipe.getSpecialPrice());
-
-                    for (ItemStack ingredient : recipe.getIngredients()) {
-                        ItemStack newIngredient = ingredient.clone();
-                        newIngredient.setAmount(1);
-                        newRecipe.addIngredient(newIngredient);
-                    }
-                    recipes.add(newRecipe);
-                }
-                villager.setRecipes(recipes);
-            }
-        }
+        } 
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
+        // Handle GUI Logic
         if (event.getView().title().equals(Component.text(GUI_TITLE))) {
             if (event.getCurrentItem() != null && event.getCurrentItem().getType() != Material.AIR) {
                 event.setCancelled(true);
                 event.getWhoClicked().getInventory().addItem(event.getCurrentItem().clone());
+                return;
+            }
+        }
+        
+        // Handle Ender Chest Restriction Logic
+        if (event.getClickedInventory() != null && event.getWhoClicked() instanceof Player player) {
+            Inventory topInv = player.getOpenInventory().getTopInventory();
+            
+            // Only check if an Ender Chest is open
+            if (topInv.getType() == InventoryType.ENDER_CHEST) {
+                
+                // 1. Preventing placing item directly into Ender Chest (Cursor click)
+                if (event.getClickedInventory().getType() == InventoryType.ENDER_CHEST) {
+                    if (isRestrictedItem(event.getCursor())) {
+                        event.setCancelled(true);
+                        player.sendMessage(Component.text("You cannot store Itti's armor (or containers holding it) in an Ender Chest!", NamedTextColor.RED));
+                    }
+                    // Prevent swapping hotbar items into Ender Chest
+                    if (event.getClick() == ClickType.NUMBER_KEY) {
+                        ItemStack targetItem = player.getInventory().getItem(event.getHotbarButton());
+                        if (isRestrictedItem(targetItem)) {
+                            event.setCancelled(true);
+                            player.sendMessage(Component.text("You cannot store Itti's armor in an Ender Chest!", NamedTextColor.RED));
+                        }
+                    }
+                }
+
+                // 2. Preventing Shift-Clicking from Player Inventory -> Ender Chest
+                if (event.isShiftClick() && event.getClickedInventory().getType() == InventoryType.PLAYER) {
+                    if (isRestrictedItem(event.getCurrentItem())) {
+                        event.setCancelled(true);
+                        player.sendMessage(Component.text("You cannot store Itti's armor in an Ender Chest!", NamedTextColor.RED));
+                    }
+                }
+            }
+        }
+    }
+    
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (event.getInventory().getType() == InventoryType.ENDER_CHEST) {
+            if (isRestrictedItem(event.getOldCursor())) {
+                event.setCancelled(true);
+                event.getWhoClicked().sendMessage(Component.text("You cannot store Itti's armor in an Ender Chest!", NamedTextColor.RED));
             }
         }
     }
@@ -394,7 +463,13 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                     if (remainingSeconds < 0) remainingSeconds = 0;
 
                     if (nextPiece.revealed) {
-                        event.getPlayer().sendMessage(Component.text("IttisArmor: The " + nextPiece.name + " coordinates have been revealed!", NamedTextColor.RED));
+                        // FIXED: Show the ACTUAL coordinates on join, not just the text "revealed"
+                        Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
+                                .append(Component.text("The " + nextPiece.name + " is located at ", NamedTextColor.RED))
+                                .append(Component.text("X:" + nextPiece.location.getBlockX() + 
+                                                       " Y:" + nextPiece.location.getBlockY() + 
+                                                       " Z:" + nextPiece.location.getBlockZ(), NamedTextColor.YELLOW));
+                        event.getPlayer().sendMessage(message);
                     } else {
                         String timeStr = formatTime(remainingSeconds);
                         Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
@@ -419,7 +494,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         return sb.toString().trim();
     }
 
-    // Attempt to spawn ALL missing pieces
     private void spawnAllChests(World world) {
         for (ArmorPiece piece : armorPieces) {
             if (piece.location == null) {
@@ -430,13 +504,11 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         getLogger().info("IttisArmor: Spawn scan complete.");
     }
 
-    // Handles safe spawning for a SINGLE piece
     private void respawnPiece(World world, ArmorPiece piece) {
         Random random = new Random();
         Location spawn = world.getSpawnLocation();
         boolean placed = false;
         
-        // Attempt 10 times to find a valid spot
         int attempts = 0;
         while (!placed && attempts < 10) {
             attempts++;
@@ -444,7 +516,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             int z = spawn.getBlockZ() + random.nextInt(10001) - 5000;
             int y = random.nextInt(81) - 60;
 
-            // SAFE CHUNK LOADING
             Chunk chunk = world.getChunkAt(x >> 4, z >> 4);
             if (!chunk.isLoaded()) {
                 chunk.load(true); 
@@ -480,10 +551,9 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         long timeSinceReset = serverUptimeSeconds - lastTimerReset;
 
         if (timeSinceReset >= REVEAL_INTERVAL) {
-            // FIX: If location is missing when time is up, FIND A NEW SPOT IMMEDIATELY
             if (currentTarget.location == null || currentTarget.location.getWorld() == null) {
                 getLogger().warning(currentTarget.name + " reveal time reached but location is null. Force respawning...");
-                World overworld = Bukkit.getWorld("world"); // Default to 'world'
+                World overworld = Bukkit.getWorld("world");
                 if (overworld == null && !Bukkit.getWorlds().isEmpty()) {
                     overworld = Bukkit.getWorlds().get(0);
                 }
@@ -494,7 +564,6 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                 }
             }
 
-            // Now try to broadcast (if respawn worked)
             if (currentTarget.location != null && currentTarget.location.getWorld() != null) {
                 currentTarget.revealed = true;
                 broadcastReveal(currentTarget);
@@ -520,7 +589,7 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         boolean found = false;
 
         String savedWorldUID;
-        String savedWorldName; // Added backup
+        String savedWorldName;
         int savedX, savedY, savedZ;
 
         ArmorPiece(String name, Material material) {

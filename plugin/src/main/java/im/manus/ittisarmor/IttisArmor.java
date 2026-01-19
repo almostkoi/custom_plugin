@@ -277,21 +277,25 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
 
-        // FIXED: Check if it actually HAS custom model data before trying to get it
         if (!meta.hasCustomModelData()) return false;
         
         return meta.getCustomModelData() == getModelDataForMaterial(material);
     }
     
-    // Checks if the item IS an armor piece, OR if it is a container holding one
+    // NEW: Helper to check if an item matches EITHER Diamond OR Netherite version
+    private boolean isIttisArmorVariant(ItemStack item, Material diamondMat, Material netheriteMat) {
+        return isIttisItem(item, diamondMat) || isIttisItem(item, netheriteMat);
+    }
+    
+    // Checks if the item IS an armor piece (Diamond OR Netherite), OR if it is a container holding one
     private boolean isRestrictedItem(ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return false;
 
-        // 1. Direct check
-        if (isIttisItem(item, Material.DIAMOND_HELMET) ||
-            isIttisItem(item, Material.DIAMOND_CHESTPLATE) ||
-            isIttisItem(item, Material.DIAMOND_LEGGINGS) ||
-            isIttisItem(item, Material.DIAMOND_BOOTS)) {
+        // 1. Direct check (UPDATED: Checks both Diamond and Netherite)
+        if (isIttisArmorVariant(item, Material.DIAMOND_HELMET, Material.NETHERITE_HELMET) ||
+            isIttisArmorVariant(item, Material.DIAMOND_CHESTPLATE, Material.NETHERITE_CHESTPLATE) ||
+            isIttisArmorVariant(item, Material.DIAMOND_LEGGINGS, Material.NETHERITE_LEGGINGS) ||
+            isIttisArmorVariant(item, Material.DIAMOND_BOOTS, Material.NETHERITE_BOOTS)) {
             return true;
         }
 
@@ -314,12 +318,13 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
         return false;
     }
 
+    // UPDATED: Now maps Netherite items to the same custom model data ID as Diamond items
     private int getModelDataForMaterial(Material material) {
         return switch (material) {
-            case DIAMOND_HELMET -> 1001;
-            case DIAMOND_CHESTPLATE -> 1002;
-            case DIAMOND_LEGGINGS -> 1003;
-            case DIAMOND_BOOTS -> 1004;
+            case DIAMOND_HELMET, NETHERITE_HELMET -> 1001;
+            case DIAMOND_CHESTPLATE, NETHERITE_CHESTPLATE -> 1002;
+            case DIAMOND_LEGGINGS, NETHERITE_LEGGINGS -> 1003;
+            case DIAMOND_BOOTS, NETHERITE_BOOTS -> 1004;
             default -> 0;
         };
     }
@@ -331,19 +336,20 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
             ItemStack legs = player.getInventory().getLeggings();
             ItemStack boots = player.getInventory().getBoots();
 
+            // UPDATED: All checks now use isIttisArmorVariant to support Netherite upgrades
+
             // HELMET: Hero of the Village (Level 255)
-            if (isIttisItem(helmet, Material.DIAMOND_HELMET)) {
-                // Amplifier 255 usually reduces trades to 1 item
+            if (isIttisArmorVariant(helmet, Material.DIAMOND_HELMET, Material.NETHERITE_HELMET)) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.HERO_OF_THE_VILLAGE, 40, 255, false, false, true));
             }
 
-            if (isIttisItem(chest, Material.DIAMOND_CHESTPLATE)) {
+            if (isIttisArmorVariant(chest, Material.DIAMOND_CHESTPLATE, Material.NETHERITE_CHESTPLATE)) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 1, false, false, true));
             }
-            if (isIttisItem(legs, Material.DIAMOND_LEGGINGS)) {
+            if (isIttisArmorVariant(legs, Material.DIAMOND_LEGGINGS, Material.NETHERITE_LEGGINGS)) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 40, 1, false, false, true));
             }
-            if (isIttisItem(boots, Material.DIAMOND_BOOTS)) {
+            if (isIttisArmorVariant(boots, Material.DIAMOND_BOOTS, Material.NETHERITE_BOOTS)) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 40, 2, false, false, true));
             }
         }
@@ -463,7 +469,12 @@ public class IttisArmor extends JavaPlugin implements Listener, CommandExecutor 
                     if (remainingSeconds < 0) remainingSeconds = 0;
 
                     if (nextPiece.revealed) {
-                        event.getPlayer().sendMessage(Component.text("IttisArmor: The " + nextPiece.name + " coordinates have been revealed!", NamedTextColor.RED));
+                        Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
+                                .append(Component.text("The " + nextPiece.name + " is located at ", NamedTextColor.RED))
+                                .append(Component.text("X:" + nextPiece.location.getBlockX() + 
+                                                       " Y:" + nextPiece.location.getBlockY() + 
+                                                       " Z:" + nextPiece.location.getBlockZ(), NamedTextColor.YELLOW));
+                        event.getPlayer().sendMessage(message);
                     } else {
                         String timeStr = formatTime(remainingSeconds);
                         Component message = Component.text("IttisArmor: ", NamedTextColor.GOLD)
